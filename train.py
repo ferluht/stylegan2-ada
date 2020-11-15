@@ -133,7 +133,7 @@ def setup_training_options(
     # ----------------------------
 
     if metrics is None:
-        metrics = ['fid50k_full']
+        metrics = []
     assert isinstance(metrics, list)
     assert all(isinstance(metric, str) for metric in metrics)
 
