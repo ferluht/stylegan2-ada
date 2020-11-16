@@ -278,7 +278,7 @@ def main():
     )
 
     parser.add_argument('--network',     help='Network pickle filename', dest='network_pkl', required=True)
-    parser.add_argument('--target',      help='Target image file to project to', dest='target_fname', required=True)
+    parser.add_argument('--target',      help='Target image file to project to', dest='target_dir', required=True)
     parser.add_argument('--save-video',  help='Save an mp4 video of optimization progress (default: true)', type=_str_to_bool, default=True)
     parser.add_argument('--seed',        help='Random seed', type=int, default=303)
     parser.add_argument('--outdir',      help='Where to save the output images', required=True, metavar='DIR')
