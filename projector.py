@@ -18,6 +18,8 @@ import PIL.Image
 import tensorflow as tf
 import tqdm
 
+from tqdm import tqdm as tqdm_iter
+
 import dnnlib
 import dnnlib.tflib as tflib
 
@@ -209,9 +211,9 @@ def project(network_pkl: str, target_dir: str, outdir: str, save_video: bool, se
     with dnnlib.util.open_url(network_pkl) as fp:
         _G, _D, Gs = pickle.load(fp)
 
-    targets_list = [f for f in os.listdir(target_dir) if '.png' in f]
+    targets_list = [f for f in os.listdir(target_dir) if '.jpg' in f]
 
-    for target_fname in tqdm(targets_list):
+    for target_fname in tqdm_iter(targets_list):
         # Load target image.
         target_pil = PIL.Image.open(os.path.join(target_dir, target_fname))
         w, h = target_pil.size
@@ -229,19 +231,17 @@ def project(network_pkl: str, target_dir: str, outdir: str, save_video: bool, se
 
         # Setup output directory.
         os.makedirs(outdir, exist_ok=True)
-        target_pil.save(f'{outdir}/{target_fname}')
+        target_pil.save(f'{outdir}/orig_{target_fname}')
         writer = None
         if save_video:
             writer = imageio.get_writer(f'{outdir}/{target_fname[:-4]}.mp4', mode='I', fps=60, codec='libx264', bitrate='16M')
 
         # Run projector.
-        with tqdm.trange(proj.num_steps) as t:
-            for step in t:
-                assert step == proj.cur_step
-                if writer is not None:
-                    writer.append_data(np.concatenate([target_uint8, proj.images_uint8[0]], axis=1))
-                dist, loss = proj.step()
-                t.set_postfix(dist=f'{dist[0]:.4f}', loss=f'{loss:.2f}')
+        for step in range(proj.num_steps):
+            assert step == proj.cur_step
+            if writer is not None:
+                writer.append_data(np.concatenate([target_uint8, proj.images_uint8[0]], axis=1))
+            dist, loss = proj.step()
 
         # Save results.
         PIL.Image.fromarray(proj.images_uint8[0], 'RGB').save(f'{outdir}/{target_fname}')
