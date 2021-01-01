@@ -12,12 +12,15 @@ import argparse
 import os
 import pickle
 import re
+import imageio
 
 import numpy as np
 import PIL.Image
 
 import dnnlib
 import dnnlib.tflib as tflib
+
+from tqdm import tqdm
 
 #----------------------------------------------------------------------------
 
@@ -31,14 +34,34 @@ def generate_images(network_pkl, seeds, truncation_psi, outdir, class_idx, dlate
 
     # Render images for a given dlatent vector.
     if dlatents_npz is not None:
-        print(f'Generating images from dlatents file "{dlatents_npz}"')
-        dlatents = np.load(dlatents_npz)['dlatents']
-        assert dlatents.shape[1:] == (18, 512) # [N, 18, 512]
-        imgs = Gs.components.synthesis.run(dlatents, output_transform=dict(func=tflib.convert_images_to_uint8, nchw_to_nhwc=True))
-        for i, img in enumerate(imgs):
-            fname = f'{outdir}/dlatent{i:02d}.png'
-            print (f'Saved {fname}')
-            PIL.Image.fromarray(img, 'RGB').save(fname)
+
+        with open(os.path.join(dlatents_npz, 'final_selection'), 'r') as f:
+            sel_list = f.readlines()
+
+        dlatents_npz = [os.path.join(dlatents_npz, f'{int(i)}.npz') for i in sel_list] # [os.path.join(dlatents_npz, f) for f in os.listdir(dlatents_npz) if '.npz' in f]
+
+        frames = 60
+        scale = 4
+
+        writer = imageio.get_writer(f'''{outdir}/{dlatents_npz[0].split('/')[-1]}.mp4''', mode='I', fps=frames, codec='libx264', bitrate='16M')
+
+        for dlt1, dlt2 in tqdm(zip(dlatents_npz[:-1], dlatents_npz[1:])):
+            print(f'Generating images from dlatents file "{dlatents_npz}"')
+            dlatents1 = np.load(dlt1)['dlatents']
+            dlatents2 = np.load(dlt2)['dlatents']
+
+            step = (dlatents2 - dlatents1) / (scale*frames)
+
+            for j in range(scale*frames):
+                dlatents = dlatents1 + step * j
+                # assert dlatents.shape[1:] == (18, 512) # [N, 18, 512]
+                imgs = Gs.components.synthesis.run(dlatents, output_transform=dict(func=tflib.convert_images_to_uint8, nchw_to_nhwc=True))
+                for i, img in enumerate(imgs):
+                    fname = f'''{outdir}/dlatent_{dlt1.split('/')[-1]}_{j}_{i:02d}.png'''
+                    # PIL.Image.fromarray(img, 'RGB').save(fname)
+                    writer.append_data(img)
+
+        writer.close()
         return
 
     # Render images for dlatents initialized from random seeds.
@@ -58,6 +81,11 @@ def generate_images(network_pkl, seeds, truncation_psi, outdir, class_idx, dlate
         print('Generating image for seed %d (%d/%d) ...' % (seed, seed_idx, len(seeds)))
         rnd = np.random.RandomState(seed)
         z = rnd.randn(1, *Gs.input_shape[1:]) # [minibatch, component]
+
+        dlatents = Gs.components.mapping.run(z, None).astype(np.float32)  # [N, L, C]
+        # dlatents = dlatents[:, :1, :].astype(np.float32)
+        np.savez(f'{outdir}/{seed}.npz', dlatents=dlatents)
+
         tflib.set_vars({var: rnd.randn(*var.shape.as_list()) for var in noise_vars}) # [height, width]
         images = Gs.run(z, label, **Gs_kwargs) # [minibatch, height, width, channel]
         PIL.Image.fromarray(images[0], 'RGB').save(f'{outdir}/seed{seed:04d}.png')
